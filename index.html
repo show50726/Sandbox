@@ -9,7 +9,7 @@
     <canvas width="512" height="512"></canvas>
     <script type="module">
       const GRID_SIZE = 128;
-      const UPDATE_INTERVAL = 200;
+      const UPDATE_INTERVAL = 100;
       const WORKGROUP_SIZE = 8;
 
       const canvas = document.querySelector("canvas");
@@ -17,6 +17,25 @@
       if(!navigator.gpu){
           throw new Error("WebGPU not supported on this browser.");
       }
+
+      let isMouseDown = false;
+      const spawnQueue = [];
+
+      canvas.addEventListener("mousedown", () => { isMouseDown = true; });
+	  canvas.addEventListener("mouseup", () => { isMouseDown = false; });
+	  canvas.addEventListener("mouseleave", () => { isMouseDown = false; });
+      canvas.addEventListener("mousemove", (event) => {
+      	if (!isMouseDown) return;
+
+		const rect = canvas.getBoundingClientRect();
+		const mouseX = event.clientX - rect.left;
+		const mouseY = event.clientY - rect.top;
+
+		const gridX = Math.floor(mouseX / canvas.width * GRID_SIZE);
+		const gridY = Math.floor((canvas.height - mouseY) / canvas.height * GRID_SIZE);
+
+		spawnQueue.push([gridX, gridY]);
+	  });
       
       // Adaptor is like VkPhysicalDevice in Vulkan
       const adapter = await navigator.gpu.requestAdapter();
@@ -298,6 +317,20 @@
       let step = 0;
 
       function updateGrid(){
+      	for (const [x, y] of spawnQueue) {
+		  if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) continue;
+		  const index = y * GRID_SIZE + x;
+		  cellStateArray[index] = 1;
+
+		  const bufferA = cellStateStorage[step % 2];       // current input
+		  const bufferB = cellStateStorage[(step + 1) % 2]; // next output
+		  const value = new Uint32Array([1]);
+
+		  device.queue.writeBuffer(bufferA, index * 4, value);
+		  device.queue.writeBuffer(bufferB, index * 4, value);
+		}
+		spawnQueue.length = 0;
+      	
         // For recording commands for GPU
         const encoder = device.createCommandEncoder();
 
