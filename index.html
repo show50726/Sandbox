@@ -1,12 +1,12 @@
 <!doctype html>
 
 <html>
-  <head>
-    <meta charset="utf-8">
-    <title>WebGPU Life</title>
-  </head>
-  <body>
-  	<div id="fps" style="
+<head>
+  <meta charset="utf-8">
+  <title>WebGPU Life</title>
+</head>
+<body>
+<div id="fps" style="
 	  position: absolute;
 	  top: 8px;
 	  left: 8px;
@@ -19,117 +19,118 @@
 	  user-select: none;
 	  z-index: 100;
 	">FPS: 0</div>
-    <canvas width="512" height="512"></canvas>
-    <script type="module">
-      const GRID_SIZE = 128;
-      const UPDATE_INTERVAL = 100;
-      const WORKGROUP_SIZE = 8;
+<canvas width="512" height="512"></canvas>
+<script type="module">
+  const GRID_SIZE = 64;
+  const UPDATE_INTERVAL = 100;
+  const WORKGROUP_SIZE = 8;
 
-      const fpsDisplay = document.getElementById("fps");
-	  let lastTime = performance.now();
-	  let frames = 0;
-	  let fps = 0;
+  const fpsDisplay = document.getElementById("fps");
+  let lastTime = performance.now();
+  let frames = 0;
+  let fps = 0;
 
-      const canvas = document.querySelector("canvas");
+  const canvas = document.querySelector("canvas");
 
-      if(!navigator.gpu){
-          throw new Error("WebGPU not supported on this browser.");
-      }
+  if (!navigator.gpu) {
+    throw new Error("WebGPU not supported on this browser.");
+  }
 
-      let isMouseDown = false;
-      const spawnQueue = [];
+  let isMouseDown = false;
+  const spawnQueue = [];
 
-      canvas.addEventListener("mousedown", () => { isMouseDown = true; });
-	  canvas.addEventListener("mouseup", () => { isMouseDown = false; });
-	  canvas.addEventListener("mouseleave", () => { isMouseDown = false; });
-      canvas.addEventListener("mousemove", (event) => {
-      	if (!isMouseDown) return;
+  canvas.addEventListener("mousedown", () => {
+    isMouseDown = true;
+  });
+  canvas.addEventListener("mouseup", () => {
+    isMouseDown = false;
+  });
+  canvas.addEventListener("mouseleave", () => {
+    isMouseDown = false;
+  });
+  canvas.addEventListener("mousemove", (event) => {
+    if (!isMouseDown) return;
 
-		const rect = canvas.getBoundingClientRect();
-		const mouseX = event.clientX - rect.left;
-		const mouseY = event.clientY - rect.top;
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
 
-		const gridX = Math.floor(mouseX / canvas.width * GRID_SIZE);
-		const gridY = Math.floor((canvas.height - mouseY) / canvas.height * GRID_SIZE);
+    const gridX = Math.floor(mouseX / canvas.width * GRID_SIZE);
+    const gridY = Math.floor((canvas.height - mouseY) / canvas.height * GRID_SIZE);
 
-		spawnQueue.push([gridX, gridY]);
-	  });
-      
-      // Adaptor is like VkPhysicalDevice in Vulkan
-      const adapter = await navigator.gpu.requestAdapter();
-      if(!adapter){
-          throw new Error("No appropriate GPUAdapter found.");
-      }
+    spawnQueue.push([gridX, gridY]);
+  });
 
-      // VkDevice in Vulkan
-      const device = await adapter.requestDevice();
+  // Adaptor is like VkPhysicalDevice in Vulkan
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) {
+    throw new Error("No appropriate GPUAdapter found.");
+  }
 
-      const context = canvas.getContext("webgpu");
-      const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
-      context.configure({
-        device: device,
-        format: canvasFormat,
-      });
+  // VkDevice in Vulkan
+  const device = await adapter.requestDevice();
 
-      const vertices = new Float32Array([
-      //   X,    Y,
-        -1.0, -1.0,
-         1.0, -1.0,
-         1.0,  1.0,
+  const context = canvas.getContext("webgpu");
+  const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+  context.configure({
+    device: device,
+    format: canvasFormat,
+  });
 
-        -1.0, -1.0,
-         1.0,  1.0,
-        -1.0,  1.0,
-      ]);
+  const vertices = new Float32Array([
+    //   X,    Y,
+    -1.0, -1.0,
+    1.0, -1.0,
+    1.0, 1.0,
 
-      const vertexBuffer = device.createBuffer({
-        label: "Cell vertices",
-        size: vertices.byteLength,
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-      });
+    -1.0, -1.0,
+    1.0, 1.0,
+    -1.0, 1.0,
+  ]);
 
-      // Copy the data into the buffer
-      device.queue.writeBuffer(vertexBuffer, /*bufferOffset=*/0, vertices);
+  const vertexBuffer = device.createBuffer({
+    label: "Cell vertices",
+    size: vertices.byteLength,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+  });
 
-      const vertexBufferLayout = {
-        arrayStride: 8,
-        attributes: [{
-          format: "float32x2",
-          offset: 0,
-          shaderLocation: 0, // => Position
-        }],
-      };
+  // Copy the data into the buffer
+  device.queue.writeBuffer(vertexBuffer, /*bufferOffset=*/0, vertices);
 
-      const uniformArray = new Float32Array([GRID_SIZE, GRID_SIZE]);
-      const uniformBuffer = device.createBuffer({
-        label: "Grid Uniforms",
-        size: uniformArray.byteLength,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-      });
-      device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
+  const vertexBufferLayout = {
+    arrayStride: 8,
+    attributes: [{
+      format: "float32x2",
+      offset: 0,
+      shaderLocation: 0, // => Position
+    }],
+  };
 
-      const cellStateArray = new Uint32Array(GRID_SIZE * GRID_SIZE);
-      const cellStateStorage = [
-        device.createBuffer({
-          label: "Cell State A",
-          size: cellStateArray.byteLength,
-          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        }),
-        device.createBuffer({
-          label: "Cell State B",
-          size: cellStateArray.byteLength,
-          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        })
-      ]
-      // Write to buffer A
-      for(let i = 0; i < cellStateArray.length; i += 3){
-        cellStateArray[i] = Math.random() > 0.6 ? 1 : 0;
-      }
-      device.queue.writeBuffer(cellStateStorage[0], 0, cellStateArray);
+  const uniformArray = new Float32Array([GRID_SIZE, GRID_SIZE]);
+  const uniformBuffer = device.createBuffer({
+    label: "Grid Uniforms",
+    size: uniformArray.byteLength,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
 
-      const cellShaderModule = device.createShaderModule({
-        label: "Cell shader",
-        code: `
+  const cellStateArray = new Uint32Array(GRID_SIZE * GRID_SIZE);
+  const cellStateStorage = [
+    device.createBuffer({
+      label: "Cell State A",
+      size: cellStateArray.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    }),
+    device.createBuffer({
+      label: "Cell State B",
+      size: cellStateArray.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    })
+  ]
+
+  const cellShaderModule = device.createShaderModule({
+    label: "Cell shader",
+    code: `
           struct VertexInput {
             @location(0) pos: vec2f,
             @builtin(instance_index) instance: u32,
@@ -167,245 +168,234 @@
             return vec4f(input.cell / grid, 0, 1);
           }
         `
-      });
+  });
 
-      const simulationShaderModule = device.createShaderModule({
-        label: "Game of Life shader",
-        code: `
+  const simulationShaderModule = device.createShaderModule({
+    label: "Game of Life shader",
+    code: `
           @group(0) @binding(0) var<uniform> grid: vec2f;
 
           @group(0) @binding(1) var<storage> cellStateIn: array<u32>;
           @group(0) @binding(2) var<storage, read_write> cellStateOut: array<u32>;
 
           fn cellIndex(cell: vec2u) -> u32 {
-            return cell.y * u32(grid.x) + cell.x;
+            // Clamp coordinates to be within grid bounds to prevent out-of-bounds access
+            let clampedCell = clamp(cell, vec2u(0, 0), vec2u(u32(grid.x) - 1, u32(grid.y) - 1));
+            return clampedCell.y * u32(grid.x) + clampedCell.x;
           }
 
           fn cellActive(x: u32, y: u32) -> u32 {
-            let newx = clamp(x, 0, u32(grid.x) - 1);
-            let newy = clamp(y, 0, u32(grid.y) - 1);
-            return cellStateIn[cellIndex(vec2(newx, newy))];
+            // Add a check to prevent reading from outside the grid, especially for y+1 at the top row
+            if (y >= u32(grid.y)) {
+              return 0u;
+            }
+            return cellStateIn[cellIndex(vec2u(x, y))];
           }
 
           @compute
           @workgroup_size(${WORKGROUP_SIZE}, ${WORKGROUP_SIZE})
           fn computeMain(@builtin(global_invocation_id) cell: vec3u){
-            let x = cell.x;
-            let y = cell.y;
+            let i = cellIndex(cell.xy);
 
-            if (x >= u32(grid.x) || y >= u32(grid.y)) {
+            if (cell.x >= u32(grid.x) || cell.y >= u32(grid.y)) {
                 return;
             }
 
-            let i = cellIndex(vec2u(x, y));
-            let is_active = cellActive(x, y);
+            cellStateOut[i] = 0u;
 
-            if (is_active == 1u) {
-                if (y == 0u) {
-                    cellStateOut[i] = 1u;
-                    return;
-                }
-
-                let below = vec2u(x, y - 1);
-                if (cellActive(below.x, below.y) == 0u) {
-                    let j = cellIndex(below);
-                    cellStateOut[i] = 0u;
-                    cellStateOut[j] = 1u;
-                    return;
-                }
-
-                if (x > 0u) {
-                    let leftDown = vec2u(x - 1u, y - 1u);
-                    if (cellActive(leftDown.x, leftDown.y) == 0u) {
-                        let j = cellIndex(leftDown);
-                        cellStateOut[i] = 0u;
-                        cellStateOut[j] = 1u;
-                        return;
-                    }
-                }
-
-                if (x + 1u < u32(grid.x)) {
-                    let rightDown = vec2u(x + 1u, y - 1u);
-                    if (cellActive(rightDown.x, rightDown.y) == 0u) {
-                        let j = cellIndex(rightDown);
-                        cellStateOut[i] = 0u;
-                        cellStateOut[j] = 1u;
-                        return;
-                    }
-                }
-
+            if (cellActive(cell.x, cell.y + 1) == 1u) {
                 cellStateOut[i] = 1u;
-            } else {
-                cellStateOut[i] = 0u;
+                return;
+            }
+
+            if (cell.x > 0u && cellActive(cell.x - 1, cell.y + 1) == 1u) {
+                cellStateOut[i] = 1u;
+                return;
+            }
+
+            if (cell.x < u32(grid.x) - 1 && cellActive(cell.x + 1, cell.y + 1) == 1u) {
+                cellStateOut[i] = 1u;
+                return;
+            }
+
+            let is_active = cellActive(cell.x, cell.y);
+            let can_fall = cell.y > 0u && (
+                cellActive(cell.x, cell.y - 1) == 0u ||
+                (cell.x > 0u && cellActive(cell.x - 1, cell.y - 1) == 0u) ||
+                (cell.x < u32(grid.x) - 1 && cellActive(cell.x + 1, cell.y - 1) == 0u)
+            );
+
+            if (is_active == 1u && !can_fall) {
+                cellStateOut[i] = 1u;
             }
           }`
-      });
+  });
 
-      const bindGroupLayout = device.createBindGroupLayout({
-        label: "Cell Bind Group Layout",
-        entries: [{
-          binding: 0,
-          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
-          buffer: {} // Grid uniform buffer, leave as default
-        },
+  const bindGroupLayout = device.createBindGroupLayout({
+    label: "Cell Bind Group Layout",
+    entries: [{
+      binding: 0,
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+      buffer: {} // Grid uniform buffer, leave as default
+    },
+      {
+        binding: 1,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.COMPUTE,
+        buffer: {type: "read-only-storage"} // Cell state input buffer
+      },
+      {
+        binding: 2,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {type: "storage"} // Cell state output buffer
+      }]
+  });
+
+  // Cannot change the resources that a bind group points to after it's been created.
+  // But you can change the contents of them
+  const bindGroups = [
+    device.createBindGroup({
+      label: "Cell renderer bind group A",
+      layout: bindGroupLayout,
+      entries: [{
+        binding: 0,
+        resource: {buffer: uniformBuffer}
+      },
         {
           binding: 1,
-          visibility: GPUShaderStage.VERTEX | GPUShaderStage.COMPUTE,
-          buffer: {type: "read-only-storage"} // Cell state input buffer
+          resource: {buffer: cellStateStorage[0]}
         },
         {
           binding: 2,
-          visibility: GPUShaderStage.COMPUTE,
-          buffer: {type: "storage"} // Cell state output buffer
-        }]
-      });
-
-      // Cannot change the resources that a bind group points to after it's been created.
-      // But you can change the contents of them
-      const bindGroups = [
-        device.createBindGroup({
-          label: "Cell renderer bind group A",
-          layout: bindGroupLayout,
-          entries: [{
-            binding: 0,
-            resource: {buffer: uniformBuffer}
-          },
-          {
-            binding: 1,
-            resource: {buffer: cellStateStorage[0]}
-          },
-          {
-            binding: 2,
-            resource: {buffer:cellStateStorage[1]}
-          }],
-        }),
-        device.createBindGroup({
-          label: "Cell renderer bind group B",
-          layout: bindGroupLayout,
-          entries: [{
-            binding: 0,
-            resource: {buffer: uniformBuffer}
-          },
-          {
-            binding: 1,
-            resource: {buffer: cellStateStorage[1]}
-          },
-          {
-            binding: 2,
-            resource: {buffer:cellStateStorage[0]}
-          }],
-        }),
-      ];
-
-      const pipelineLayout = device.createPipelineLayout({
-        label: "Cell Pipeline Layout",
-        bindGroupLayouts: [bindGroupLayout],
-      });
-
-      const simulationPipeline = device.createComputePipeline({
-        label: "Simulation pipeline",
-        layout: pipelineLayout,
-        compute: {
-          module: simulationShaderModule,
-          entryPoint: "computeMain",
-        }
-      });
-
-      // Not every combination of options is valid, by providing
-      // all the options in one place we can check if 
-      // the pipeline is usable at creation time easily.
-      // Also cuts doen on the amount of calls we need to make for checking.
-      const cellPipeline = device.createRenderPipeline({
-        label: "Cell pipeline",
-        layout: pipelineLayout,
-        vertex: {
-          module: cellShaderModule,
-          entryPoint: "vertexMain",
-          buffers: [vertexBufferLayout]
+          resource: {buffer: cellStateStorage[1]}
+        }],
+    }),
+    device.createBindGroup({
+      label: "Cell renderer bind group B",
+      layout: bindGroupLayout,
+      entries: [{
+        binding: 0,
+        resource: {buffer: uniformBuffer}
+      },
+        {
+          binding: 1,
+          resource: {buffer: cellStateStorage[1]}
         },
-        fragment: {
-          module: cellShaderModule,
-          entryPoint: "fragmentMain",
-          targets: [{
-            format: canvasFormat
-          }]
-        }
-      });
+        {
+          binding: 2,
+          resource: {buffer: cellStateStorage[0]}
+        }],
+    }),
+  ];
 
-      let step = 0;
+  const pipelineLayout = device.createPipelineLayout({
+    label: "Cell Pipeline Layout",
+    bindGroupLayouts: [bindGroupLayout],
+  });
 
-      function frame(){
-      	const now = performance.now();
-		const delta = now - lastTime;
-		frames++;
+  const simulationPipeline = device.createComputePipeline({
+    label: "Simulation pipeline",
+    layout: pipelineLayout,
+    compute: {
+      module: simulationShaderModule,
+      entryPoint: "computeMain",
+    }
+  });
 
-		if (delta >= 1000) {
-		  fps = frames * 1000 / delta;
-		  fpsDisplay.textContent = `FPS: ${fps.toFixed(1)}`;
-		  frames = 0;
-		  lastTime = now;
-		}
+  // Not every combination of options is valid, by providing
+  // all the options in one place we can check if
+  // the pipeline is usable at creation time easily.
+  // Also cuts doen on the amount of calls we need to make for checking.
+  const cellPipeline = device.createRenderPipeline({
+    label: "Cell pipeline",
+    layout: pipelineLayout,
+    vertex: {
+      module: cellShaderModule,
+      entryPoint: "vertexMain",
+      buffers: [vertexBufferLayout]
+    },
+    fragment: {
+      module: cellShaderModule,
+      entryPoint: "fragmentMain",
+      targets: [{
+        format: canvasFormat
+      }]
+    }
+  });
 
-		updateGrid();
-		requestAnimationFrame(frame);
-      }
+  let step = 0;
 
-      function updateGrid(){
-      	for (const [x, y] of spawnQueue) {
-		  if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) continue;
-		  const index = y * GRID_SIZE + x;
-		  cellStateArray[index] = 1;
+  function frame() {
+    const now = performance.now();
+    const delta = now - lastTime;
+    frames++;
 
-		  const bufferA = cellStateStorage[step % 2];       // current input
-		  const bufferB = cellStateStorage[(step + 1) % 2]; // next output
-		  const value = new Uint32Array([1]);
+    if (delta >= 1000) {
+      fps = frames * 1000 / delta;
+      fpsDisplay.textContent = `FPS: ${fps.toFixed(1)}`;
+      frames = 0;
+      lastTime = now;
+    }
 
-		  device.queue.writeBuffer(bufferA, index * 4, value);
-		  device.queue.writeBuffer(bufferB, index * 4, value);
-		}
-		spawnQueue.length = 0;
-      	
-        // For recording commands for GPU
-        const encoder = device.createCommandEncoder();
+    updateGrid();
+    requestAnimationFrame(frame);
+  }
 
-        const computePass = encoder.beginComputePass();
-        computePass.setPipeline(simulationPipeline);
-        computePass.setBindGroup(0, bindGroups[step % 2]);
+  function updateGrid() {
+    for (const [x, y] of spawnQueue) {
+      if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) continue;
+      const index = y * GRID_SIZE + x;
+      cellStateArray[index] = 1;
 
-        const workgroupCount = Math.ceil(GRID_SIZE / WORKGROUP_SIZE);
-        computePass.dispatchWorkgroups(workgroupCount, workgroupCount);
-        computePass.end();
+      const bufferA = cellStateStorage[step % 2];       // current input
+      const bufferB = cellStateStorage[(step + 1) % 2]; // next output
+      const value = new Uint32Array([1]);
 
-        // To make the output of compute pass become the input of render pass, increase the step here.
-        step++;
+      device.queue.writeBuffer(bufferA, index * 4, value);
+      device.queue.writeBuffer(bufferB, index * 4, value);
+    }
+    spawnQueue.length = 0;
 
-        const pass = encoder.beginRenderPass({
-          colorAttachments: [{
-            view: context.getCurrentTexture().createView(),
-            loadOp: "clear",
-            clearValue: { r: 0, g: 0, b: 0.4, a: 1 },
-            storeOp: "store",
-          }]
-        });
-        
-        pass.setPipeline(cellPipeline);
-        pass.setVertexBuffer(0, vertexBuffer);
-        pass.setBindGroup(0, bindGroups[step % 2]);
-        // Pass in the number of vertices we should render.
-        pass.draw(vertices.length / 2, GRID_SIZE * GRID_SIZE);
+    // For recording commands for GPU
+    const encoder = device.createCommandEncoder();
 
-        // The GPU does not do anything yet. We just record the commands.
-        pass.end();
+    const computePass = encoder.beginComputePass();
+    computePass.setPipeline(simulationPipeline);
+    computePass.setBindGroup(0, bindGroups[step % 2]);
 
-        // CommandBuffer is an opaque handle to the recorded commands.
-        const commandBuffer = encoder.finish();
+    const workgroupCount = Math.ceil(GRID_SIZE / WORKGROUP_SIZE);
+    computePass.dispatchWorkgroups(workgroupCount, workgroupCount);
+    computePass.end();
 
-        // Submit the command buffer to the GPU.
-        device.queue.submit([commandBuffer]);
-        // After submission, the command buffer cannot be used again.
-      }
+    // To make the output of compute pass become the input of render pass, increase the step here.
+    step++;
 
-      requestAnimationFrame(frame);
-    </script>
-  </body>
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: context.getCurrentTexture().createView(),
+        loadOp: "clear",
+        clearValue: {r: 0, g: 0, b: 0.4, a: 1},
+        storeOp: "store",
+      }]
+    });
+
+    pass.setPipeline(cellPipeline);
+    pass.setVertexBuffer(0, vertexBuffer);
+    pass.setBindGroup(0, bindGroups[step % 2]);
+    // Pass in the number of vertices we should render.
+    pass.draw(vertices.length / 2, GRID_SIZE * GRID_SIZE);
+
+    // The GPU does not do anything yet. We just record the commands.
+    pass.end();
+
+    // CommandBuffer is an opaque handle to the recorded commands.
+    const commandBuffer = encoder.finish();
+
+    // Submit the command buffer to the GPU.
+    device.queue.submit([commandBuffer]);
+    // After submission, the command buffer cannot be used again.
+  }
+
+  requestAnimationFrame(frame);
+</script>
+</body>
 </html>
