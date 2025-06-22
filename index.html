@@ -3,25 +3,66 @@
 <head>
     <meta charset="utf-8">
     <title>Sandbox</title>
+    <style>
+        body {
+            background-color: #111;
+            color: #eee;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+        }
+        #ui-container {
+            padding: 10px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            background-color: #333;
+            width: 512px;
+            box-sizing: border-box;
+            border-radius: 8px 8px 0 0;
+        }
+        #controls button {
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background: #555;
+            color: #eee;
+            cursor: pointer;
+        }
+        #controls button.active {
+            background: #007bff;
+            border-color: #007bff;
+            font-weight: bold;
+        }
+        #fps {
+            font-family: monospace;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        canvas {
+            background-color: #000;
+            border-radius: 0 0 8px 8px;
+        }
+    </style>
 </head>
 <body>
-<div id="fps" style="
-	  position: absolute;
-	  top: 8px;
-	  left: 8px;
-	  color: white;
-	  background: rgba(0, 0, 0, 0.5);
-	  font-family: monospace;
-	  padding: 4px 8px;
-	  border-radius: 4px;
-	  pointer-events: none;
-	  user-select: none;
-	  z-index: 100;
-	">FPS: 0
+
+<div id="ui-container">
+    <div id="fps">FPS: 0</div>
+    <div id="controls">
+        <button id="sandButton" class="active">Sand</button>
+        <button id="waterButton">Water</button>
+    </div>
 </div>
+
 <canvas width="512" height="512"></canvas>
 <script type="module">
-    const GRID_SIZE = 64;
+    const GRID_SIZE = 128;
+    const SAND_INDEX = 1;
+    const WATER_INDEX = 2;
 
     const fpsDisplay = document.getElementById("fps");
     let lastTime = performance.now();
@@ -34,6 +75,22 @@
     const context = canvas.getContext("webgpu");
     const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
     context.configure({device, format: canvasFormat});
+
+    const sandButton = document.getElementById("sandButton");
+    const waterButton = document.getElementById("waterButton");
+
+    let currentParticleType = SAND_INDEX;
+    sandButton.addEventListener("click", () => {
+        currentParticleType = SAND_INDEX;
+        sandButton.classList.add("active");
+        waterButton.classList.remove("active");
+    });
+
+    waterButton.addEventListener("click", () => {
+        currentParticleType = WATER_INDEX;
+        waterButton.classList.add("active");
+        sandButton.classList.remove("active");
+    });
 
     let isMouseDown = false;
     const spawnQueue = [];
@@ -57,7 +114,7 @@
         const gridX = Math.floor(mouseX / canvas.width * GRID_SIZE);
         const gridY = Math.floor((canvas.height - mouseY) / canvas.height * GRID_SIZE);
 
-        spawnQueue.push([gridX, gridY]);
+        spawnQueue.push([gridX, gridY, currentParticleType]);
     });
 
     const vertices = new Float32Array([
@@ -108,10 +165,11 @@
 	    @location(0) pos: vec2f,
 	    @builtin(instance_index) instance: u32,
 	  };
-	  
+
 	  struct VertexOutput {
 	    @builtin(position) pos: vec4f,
 	    @location(0) cell: vec2f,
+	    @location(1) color: vec3f,
 	  };
 
 	  @group(0) @binding(0) var<uniform> grid: vec2f;
@@ -124,17 +182,24 @@
 	    let state = f32(cellState[input.instance]);
 
 	    let cellOffset = cell / grid * 2.0;
-	    let gridPos = (input.pos * state + 1.0) / grid - 1.0 + cellOffset;
+	    let scale = saturate(state);
+	    let gridPos = (input.pos * scale + 1.0) / grid - 1.0 + cellOffset;
+
+        var color = vec3f(0.8, 0.6, 0.2);
+        if(state==${WATER_INDEX}f){
+            color = vec3f(0.2, 0.5, 0.8);
+        }
 
 	    var out: VertexOutput;
 	    out.pos = vec4f(gridPos, 0, 1);
 	    out.cell = cell;
+	    out.color = color;
 	    return out;
 	  }
 
 	  @fragment
 	  fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
-	    return vec4f(input.cell / grid, 1.0 - (input.cell.x + input.cell.y) / (grid.x + grid.y), 1);
+	    return vec4f(input.color, 1);
 	  }
 	  `
     });
@@ -170,34 +235,52 @@
     });
 
     function updateSimulation() {
-        for (const [x, y] of spawnQueue) {
+        for (const [x, y, p_type] of spawnQueue) {
             if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) continue;
             const index = y * GRID_SIZE + x;
-            cellState[index] = 1;
+            cellState[index] = p_type;
         }
         spawnQueue.length = 0;
 
         const newState = cellState.slice();
 
-        for (let y = 1; y < GRID_SIZE; y++) {
+        for (let y = GRID_SIZE - 1; y > 0; y--) {
             for (let x = 0; x < GRID_SIZE; x++) {
-                const i = y * GRID_SIZE + x;
-                if (cellState[i] === 1) {
-                    const below = (y - 1) * GRID_SIZE + x;
+                const index = y * GRID_SIZE + x;
+                if (cellState[index] === SAND_INDEX) {
+                    let directions = [[0, -1], [-1, -1], [1, -1]];
+                    let moved = false;
+                    for (const dir of directions) {
+                        let newX = x + dir[0];
+                        let newY = y + dir[1];
 
-                    if (cellState[below] === 0) {
-                        newState[i] = 0;
-                        newState[below] = 1;
-                    } else {
-                        const leftBelow = (x > 0) ? below - 1 : -1;
-                        const rightBelow = (x < GRID_SIZE - 1) ? below + 1 : -1;
+                        if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE) {
+                            let newIndex = newY * GRID_SIZE + newX;
+                            if (newState[newIndex] === 0 || newState[newIndex] === 2) {
+                                newState[newIndex] = SAND_INDEX;
+                                newState[index] = cellState[newIndex];
+                                moved = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                else if(cellState[index] === WATER_INDEX) {
+                    let directions = [[0, -1], [-1, -1], [1, -1], [-1, 0], [1, 0]];
 
-                        if (leftBelow >= 0 && cellState[leftBelow] === 0) {
-                            newState[i] = 0;
-                            newState[leftBelow] = 1;
-                        } else if (rightBelow >= 0 && cellState[rightBelow] === 0) {
-                            newState[i] = 0;
-                            newState[rightBelow] = 1;
+                    let moved = false;
+                    for (const dir of directions) {
+                        let newX = x + dir[0];
+                        let newY = y + dir[1];
+
+                        if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE) {
+                            let newIndex = newY * GRID_SIZE + newX;
+                            if (newState[newIndex] === 0) {
+                                newState[newIndex] = WATER_INDEX;
+                                newState[index] = 0;
+                                moved = true;
+                                break;
+                            }
                         }
                     }
                 }
