@@ -259,7 +259,7 @@
 
         const newState = cellState.slice();
 
-        for (let y = GRID_SIZE - 1; y > 0; y--) {
+        for (let y = 0; y < GRID_SIZE; y++) {
             for (let x = 0; x < GRID_SIZE; x++) {
                 const index = y * GRID_SIZE + x;
                 if (cellState[index] === SAND_INDEX) {
@@ -271,7 +271,7 @@
 
                         if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE) {
                             let newIndex = newY * GRID_SIZE + newX;
-                            if (newState[newIndex] === 0 || newState[newIndex] === 2) {
+                            if (cellState[newIndex] === 0 || cellState[newIndex] === 2) {
                                 newState[newIndex] = SAND_INDEX;
                                 newState[index] = cellState[newIndex];
                                 moved = true;
@@ -281,7 +281,7 @@
                     }
                 }
                 else if(cellState[index] === WATER_INDEX) {
-                    let directions = [[0, -1], [-1, -1], [1, -1], [-1, 0], [1, 0]];
+                    let directions = [[0, -1], [-1, -1], [1, -1], [1, 0], [-1, 0]];
 
                     let moved = false;
                     for (const dir of directions) {
@@ -290,6 +290,7 @@
 
                         if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE) {
                             let newIndex = newY * GRID_SIZE + newX;
+                            // TODO: Fix this
                             if (newState[newIndex] === 0) {
                                 newState[newIndex] = WATER_INDEX;
                                 newState[index] = 0;
