@@ -55,6 +55,7 @@
     <div id="controls">
         <button id="sandButton" class="active">Sand</button>
         <button id="waterButton">Water</button>
+        <button id="stoneButton">Stone</button>
     </div>
 </div>
 
@@ -63,6 +64,7 @@
     const GRID_SIZE = 128;
     const SAND_INDEX = 1;
     const WATER_INDEX = 2;
+    const STONE_INDEX = 3;
 
     const fpsDisplay = document.getElementById("fps");
     let lastTime = performance.now();
@@ -78,18 +80,28 @@
 
     const sandButton = document.getElementById("sandButton");
     const waterButton = document.getElementById("waterButton");
+    const stoneButton = document.getElementById("stoneButton");
 
     let currentParticleType = SAND_INDEX;
     sandButton.addEventListener("click", () => {
         currentParticleType = SAND_INDEX;
         sandButton.classList.add("active");
         waterButton.classList.remove("active");
+        stoneButton.classList.remove("active");
     });
 
     waterButton.addEventListener("click", () => {
         currentParticleType = WATER_INDEX;
         waterButton.classList.add("active");
         sandButton.classList.remove("active");
+        stoneButton.classList.remove("active");
+    });
+
+    stoneButton.addEventListener("click", () => {
+        currentParticleType = STONE_INDEX;
+        waterButton.classList.remove("active");
+        sandButton.classList.remove("active");
+        stoneButton.classList.add("active");
     });
 
     let isMouseDown = false;
@@ -188,6 +200,9 @@
         var color = vec3f(0.8, 0.6, 0.2);
         if(state==${WATER_INDEX}f){
             color = vec3f(0.2, 0.5, 0.8);
+        }
+        if(state==${STONE_INDEX}f){
+            color = vec3f(0.8, 0.8, 0.8);
         }
 
 	    var out: VertexOutput;
