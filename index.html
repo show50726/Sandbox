@@ -3,24 +3,30 @@
 <head>
     <meta charset="utf-8">
     <title>Sandbox</title>
-    <style>
-        body {
-            margin: 0;
-            background: black;
-            overflow: hidden;
-        }
-
-        canvas {
-            display: block;
-            margin: auto;
-        }
-    </style>
 </head>
 <body>
+<div id="fps" style="
+	  position: absolute;
+	  top: 8px;
+	  left: 8px;
+	  color: white;
+	  background: rgba(0, 0, 0, 0.5);
+	  font-family: monospace;
+	  padding: 4px 8px;
+	  border-radius: 4px;
+	  pointer-events: none;
+	  user-select: none;
+	  z-index: 100;
+	">FPS: 0
+</div>
 <canvas width="512" height="512"></canvas>
 <script type="module">
     const GRID_SIZE = 64;
-    const WORKGROUP_SIZE = 8;
+
+    const fpsDisplay = document.getElementById("fps");
+    let lastTime = performance.now();
+    let frames = 0;
+    let fps = 0;
 
     const canvas = document.querySelector("canvas");
     const adapter = await navigator.gpu.requestAdapter();
@@ -201,6 +207,17 @@
     }
 
     function frame() {
+        const now = performance.now();
+        const delta = now - lastTime;
+        frames++;
+
+        if (delta >= 1000) {
+            fps = frames * 1000 / delta;
+            fpsDisplay.textContent = `FPS: ${fps.toFixed(1)}`;
+            frames = 0;
+            lastTime = now;
+        }
+
         updateSimulation();
         device.queue.writeBuffer(cellStateBuffer, 0, cellState);
 
